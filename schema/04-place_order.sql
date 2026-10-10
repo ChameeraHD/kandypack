@@ -15,6 +15,34 @@ GROUP BY
     unit_price,
     item_lifecycle_status;
 
+CREATE OR REPLACE FUNCTION get_order_items(
+    p_order_id BIGINT,
+    p_status_filter enum_item_lifecycle_status,
+    p_limit INT,
+    p_offset INT
+)
+RETURNS TABLE (
+    id BIGINT,
+    product_name VARCHAR(255),
+    unit_price NUMERIC(12, 2),
+    quantity INT,
+    item_lifecycle_status enum_item_lifecycle_status
+) AS $$
+    SELECT
+        v.id,
+        p.product_name,
+        v.unit_price,
+        v.quantity,
+        v.item_lifecycle_status
+    FROM view_order_items_grouped AS v
+    INNER JOIN products AS p ON v.product_id = p.id
+    WHERE v.order_id = p_order_id
+      AND (p_status_filter IS NULL OR v.item_lifecycle_status = p_status_filter)
+    ORDER BY v.id ASC
+    LIMIT p_limit
+    OFFSET p_offset;
+$$ LANGUAGE sql;
+
 CREATE OR REPLACE FUNCTION trg_view_order_items_grouped_io()
 RETURNS TRIGGER AS $$
 DECLARE
