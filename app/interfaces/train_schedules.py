@@ -6,13 +6,8 @@ from ui.datatable import render_datatable
 
 def fetch_train_schedules(limit: int, offset: int) -> pd.DataFrame:
     query = """
-        SELECT ts.id, s.store_name AS destination_store, ts.departure_timestamp, ts.max_capacity,
-               COUNT(ta.id) AS allocated_items
-        FROM train_schedules AS ts
-        JOIN stores AS s ON ts.destination_store_id = s.id
-        LEFT JOIN train_allocations AS ta ON ts.id = ta.train_id
-        GROUP BY ts.id, s.store_name
-        ORDER BY ts.departure_timestamp ASC
+        SELECT id, destination_store, departure_timestamp, max_capacity, allocated_items
+        FROM view_train_schedules
         LIMIT %s OFFSET %s;
     """
     return fetch_data(query, (limit, offset))
@@ -87,7 +82,7 @@ def render_train_schedules_interface():
     toolbar_container = st.container()
     table_container = st.container()
 
-    count_row = fetch_one("SELECT COUNT(*) FROM train_schedules;")
+    count_row = fetch_one("SELECT COUNT(*) FROM view_train_schedules;")
     total_count = count_row[0] if count_row else 0
 
     with table_container:
