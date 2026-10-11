@@ -1,17 +1,9 @@
 DROP VIEW IF EXISTS view_train_schedules;
 
 DROP TRIGGER IF EXISTS trg_allocate_after_order ON orders;
-DROP TRIGGER IF EXISTS trg_allocate_after_order_item ON order_items;
 DROP TRIGGER IF EXISTS trg_allocate_after_train_schedule ON train_schedules;
-DROP TRIGGER IF EXISTS trg_allocate_after_order_item ON order_items;
 DROP TRIGGER IF EXISTS trg_allocate_after_order_items ON order_items;
 DROP TRIGGER IF EXISTS trg_allocate_after_order_items_update ON order_items;
-DROP TRIGGER IF EXISTS trg_initialize_train_remaining_capacity ON train_schedules;
-
-DROP PROCEDURE IF EXISTS allocate_order_items_to_trains();
-DROP FUNCTION IF EXISTS trigger_allocate_order_items_to_trains();
-DROP FUNCTION IF EXISTS trigger_allocate_after_order_items();
-DROP FUNCTION IF EXISTS initialize_train_remaining_capacity();
 
 UPDATE train_schedules AS ts
 SET remaining_capacity = ts.max_capacity - COALESCE(allocated.used_capacity, 0)
@@ -25,30 +17,6 @@ FROM (
 ) AS allocated
 WHERE ts.id = allocated.id
 ;
-
-CREATE OR REPLACE FUNCTION initialize_train_remaining_capacity()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-BEGIN
-	IF TG_OP = 'INSERT' AND NEW.remaining_capacity IS NULL THEN
-		NEW.remaining_capacity := NEW.max_capacity;
-	ELSIF TG_OP = 'UPDATE' AND NEW.max_capacity IS DISTINCT FROM OLD.max_capacity THEN
-		NEW.remaining_capacity := NEW.max_capacity - (OLD.max_capacity - OLD.remaining_capacity);
-	END IF;
-
-	IF NEW.remaining_capacity < 0 THEN
-		RAISE EXCEPTION 'max_capacity cannot be less than allocated capacity';
-	END IF;
-
-	RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER trg_initialize_train_remaining_capacity
-BEFORE INSERT OR UPDATE OF max_capacity ON train_schedules
-FOR EACH ROW
-EXECUTE FUNCTION initialize_train_remaining_capacity();
 
 CREATE VIEW view_train_schedules AS
 WITH filter_parameters AS (
@@ -98,6 +66,14 @@ BEGIN
 			  )
 			ORDER BY o.order_date ASC, o.id ASC, oi.id ASC
 		LOOP
+			IF EXISTS (
+				SELECT 1
+				FROM train_allocations
+				WHERE order_item_id = v_item.id
+			) THEN
+				CONTINUE;
+			END IF;
+
 			IF v_item.space_consumption_unit > v_schedule.remaining_capacity THEN
 				CONTINUE;
 			END IF;
@@ -149,11 +125,6 @@ BEGIN
 	RETURN NULL;
 END;
 $$;
-
-CREATE TRIGGER trg_allocate_after_order
-AFTER INSERT OR UPDATE ON orders
-FOR EACH STATEMENT
-EXECUTE FUNCTION trigger_allocate_order_items_to_trains();
 
 CREATE TRIGGER trg_allocate_after_train_schedule
 AFTER INSERT OR UPDATE ON train_schedules
