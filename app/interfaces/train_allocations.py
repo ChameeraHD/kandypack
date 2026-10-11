@@ -31,7 +31,7 @@ def create_allocation_dialog():
         FROM order_items AS oi
         JOIN products AS p ON oi.product_id = p.id
         LEFT JOIN train_allocations AS ta ON oi.id = ta.order_item_id
-        WHERE ta.id IS NULL AND oi.item_lifecycle_status IN ('PLACED', 'SCHEDULED')
+        WHERE ta.id IS NULL AND oi.item_lifecycle_status IN ('PLACED')
         LIMIT 100;
     """)
 

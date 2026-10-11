@@ -6,7 +6,7 @@ from ui.datatable import render_datatable
 
 def fetch_train_schedules(limit: int, offset: int) -> pd.DataFrame:
     query = """
-        SELECT id, destination_store, departure_timestamp, max_capacity, allocated_items
+        SELECT id, destination_store, departure_timestamp, max_capacity, remaining_capacity, allocated_items
         FROM view_train_schedules
         LIMIT %s OFFSET %s;
     """
