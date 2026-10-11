@@ -189,7 +189,7 @@ CREATE TABLE train_schedules (
     destination_store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
     departure_timestamp  TIMESTAMPTZ NOT NULL,
     max_capacity         NUMERIC(10, 2) NOT NULL CHECK (max_capacity > 0),
-    remaining_capacity   NUMERIC(12, 4),
+    remaining_capacity   NUMERIC(12, 4), NOT NULL CHECK (remaining_capacity >= 0 AND remaining_capacity <= max_capacity)
     created_by           UUID REFERENCES users(id) ON DELETE SET NULL,
     updated_by           UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

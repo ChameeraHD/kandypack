@@ -3,6 +3,7 @@ DROP VIEW IF EXISTS view_train_schedules;
 DROP TRIGGER IF EXISTS trg_allocate_after_order ON orders;
 DROP TRIGGER IF EXISTS trg_allocate_after_train_schedule ON train_schedules;
 DROP TRIGGER IF EXISTS trg_allocate_after_order_item ON order_items;
+DROP TRIGGER IF EXISTS trg_allocate_after_order_items ON order_items;
 DROP TRIGGER IF EXISTS trg_initialize_train_remaining_capacity ON train_schedules;
 
 DROP PROCEDURE IF EXISTS allocate_order_items_to_trains();
@@ -21,16 +22,6 @@ FROM (
 ) AS allocated
 WHERE ts.id = allocated.id
 ;
-
-ALTER TABLE train_schedules
-ALTER COLUMN remaining_capacity SET NOT NULL;
-
-ALTER TABLE train_schedules
-DROP CONSTRAINT IF EXISTS chk_train_schedules_remaining_capacity;
-
-ALTER TABLE train_schedules
-ADD CONSTRAINT chk_train_schedules_remaining_capacity
-CHECK (remaining_capacity >= 0 AND remaining_capacity <= max_capacity);
 
 CREATE OR REPLACE FUNCTION initialize_train_remaining_capacity()
 RETURNS TRIGGER
@@ -130,23 +121,21 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
+	IF pg_trigger_depth() > 1 THEN
+		RETURN NEW;
+	END IF;
+
 	CALL allocate_order_items_to_trains();
 	RETURN NEW;
 END;
 $$;
-
-CREATE TRIGGER trg_allocate_after_order
-AFTER INSERT OR UPDATE ON orders
-FOR EACH STATEMENT
-EXECUTE FUNCTION trigger_allocate_order_items_to_trains();
 
 CREATE TRIGGER trg_allocate_after_train_schedule
 AFTER INSERT OR UPDATE ON train_schedules
 FOR EACH STATEMENT
 EXECUTE FUNCTION trigger_allocate_order_items_to_trains();
 
-CREATE TRIGGER trg_allocate_after_order_item
+CREATE TRIGGER trg_allocate_after_order_items
 AFTER INSERT OR UPDATE OF order_id, item_lifecycle_status ON order_items
-FOR EACH ROW
-WHEN (NEW.item_lifecycle_status = 'PLACED')
+FOR EACH STATEMENT
 EXECUTE FUNCTION trigger_allocate_order_items_to_trains();
