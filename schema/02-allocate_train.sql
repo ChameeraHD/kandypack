@@ -1,13 +1,16 @@
 DROP VIEW IF EXISTS view_train_schedules;
 
 DROP TRIGGER IF EXISTS trg_allocate_after_order ON orders;
+DROP TRIGGER IF EXISTS trg_allocate_after_order_item ON order_items;
 DROP TRIGGER IF EXISTS trg_allocate_after_train_schedule ON train_schedules;
 DROP TRIGGER IF EXISTS trg_allocate_after_order_item ON order_items;
 DROP TRIGGER IF EXISTS trg_allocate_after_order_items ON order_items;
+DROP TRIGGER IF EXISTS trg_allocate_after_order_items_update ON order_items;
 DROP TRIGGER IF EXISTS trg_initialize_train_remaining_capacity ON train_schedules;
 
 DROP PROCEDURE IF EXISTS allocate_order_items_to_trains();
 DROP FUNCTION IF EXISTS trigger_allocate_order_items_to_trains();
+DROP FUNCTION IF EXISTS trigger_allocate_after_order_items();
 DROP FUNCTION IF EXISTS initialize_train_remaining_capacity();
 
 UPDATE train_schedules AS ts
@@ -130,12 +133,41 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION trigger_allocate_after_order_items()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	IF EXISTS (
+		SELECT 1
+		FROM new_order_items
+		WHERE item_lifecycle_status = 'PLACED'
+	) THEN
+		CALL allocate_order_items_to_trains();
+	END IF;
+
+	RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_allocate_after_order
+AFTER INSERT OR UPDATE ON orders
+FOR EACH STATEMENT
+EXECUTE FUNCTION trigger_allocate_order_items_to_trains();
+
 CREATE TRIGGER trg_allocate_after_train_schedule
 AFTER INSERT OR UPDATE ON train_schedules
 FOR EACH STATEMENT
 EXECUTE FUNCTION trigger_allocate_order_items_to_trains();
 
 CREATE TRIGGER trg_allocate_after_order_items
-AFTER INSERT OR UPDATE OF order_id, item_lifecycle_status ON order_items
+AFTER INSERT ON order_items
+REFERENCING NEW TABLE AS new_order_items
 FOR EACH STATEMENT
-EXECUTE FUNCTION trigger_allocate_order_items_to_trains();
+EXECUTE FUNCTION trigger_allocate_after_order_items();
+
+CREATE TRIGGER trg_allocate_after_order_items_update
+AFTER UPDATE ON order_items
+REFERENCING NEW TABLE AS new_order_items
+FOR EACH STATEMENT
+EXECUTE FUNCTION trigger_allocate_after_order_items();

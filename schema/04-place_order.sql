@@ -225,6 +225,8 @@ BEGIN
         (item->>'quantity')::INT
     FROM jsonb_array_elements(p_items) AS item;
 
+    CALL allocate_order_items_to_trains();
+
     RAISE NOTICE 'Order % successfully placed.', p_order_id;
 END;
 $$;
