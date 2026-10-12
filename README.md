@@ -127,24 +127,42 @@ kandypack/
 ### Prerequisites
 - [Docker Engine](https://docs.docker.com/engine/install/) (v20.10+)
 - [Docker Compose](https://docs.docker.com/compose/install/) (v2.0+)
+- [Git LFS](https://git-lfs.com/) (required to retrieve the seed dataset)
 
-### 1. Development Mode (Hot-Reload Enabled)
+### 1. Prepare the repository
 
-Starts the Streamlit web application and PostgreSQL database with host directory mounting for instant hot-reloading:
+From the repository root, retrieve the Git LFS-backed seed file:
+
+```bash
+git lfs pull
+```
+
+Generate the PostgreSQL password, Streamlit secrets, and application configuration:
+
+```bash
+python scripts/setup.py
+```
+
+The setup script creates `secrets/db_password.txt`, `.streamlit/secrets.toml`, and `.env`. It also removes the existing Compose database volume and starts the services. **Do not run it if you need to preserve existing database data.**
+
+### 2. Development Mode (Hot-Reload Enabled)
+
+The setup script starts the services automatically. To start or rebuild them manually:
 
 ```bash
 docker compose up --build
 ```
 
 - **Web UI**: Access the explorer at [http://localhost:8501](http://localhost:8501).
-- **Database**: PostgreSQL listens internally on port `5432`.
+- **Database**: PostgreSQL is available to the application as `db:5432` and is not exposed directly to the host.
 
-To run in detached (background) mode:
+To run in detached mode:
+
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-### 2. Production Mode
+### 3. Production Mode
 
 Runs the hardened, non-root production container without host volume mounts:
 
@@ -152,7 +170,9 @@ Runs the hardened, non-root production container without host volume mounts:
 docker compose -f compose.yaml -f compose.prod.yaml up -d --build
 ```
 
-### 3. Stopping Services
+Open [http://localhost:8501](http://localhost:8501) after the services become healthy.
+
+### 4. Stopping Services
 
 - **Stop containers**:
   ```bash
@@ -163,6 +183,8 @@ docker compose -f compose.yaml -f compose.prod.yaml up -d --build
   docker compose down -v
   ```
 
+The SQL files in `schema/` are mounted into PostgreSQL's initialization directory and run in filename order when the database volume is created. Therefore, use `docker compose down -v` followed by `docker compose up -d --build` to recreate the database schema and seed data from scratch.
+
 ---
 
 ## ⚙️ Environment Variables
@@ -171,7 +193,7 @@ docker compose -f compose.yaml -f compose.prod.yaml up -d --build
 | :--- | :--- | :--- | :--- |
 | `DATABASE_URL` | Application | PostgreSQL connection URL string for `psycopg` | `postgresql://postgres:<password>@db:5432/kandypack` |
 | `POSTGRES_DB` | Database | Initial PostgreSQL database name | `kandypack` |
-| `POSTGRES_PASSWORD` | Database | Password for the `postgres` user | *(Specified in compose.yaml)* |
+| `POSTGRES_PASSWORD_FILE` | Database | File containing the password for the `postgres` user | `./secrets/db_password.txt` |
 | `STREAMLIT_BROWSER_GATHER_USAGE_STATS` | Application | Telemetry flag for Streamlit | `false` |
 | `STREAMLIT_SERVER_RUN_ON_SAVE` | Dev Container | Triggers automatic browser reload on save | `true` |
 | `STREAMLIT_SERVER_FILE_WATCHER_TYPE` | Dev Container | File watching mechanism inside container | `poll` |

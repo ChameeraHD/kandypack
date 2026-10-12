@@ -21,22 +21,11 @@ def fetch_order_items(limit: int, offset: int) -> pd.DataFrame:
     if not order_id:
         return pd.DataFrame(columns=["id", "product_name", "unit_price", "quantity", "item_lifecycle_status"])
 
-    base_query = """
-        SELECT 
-            v.id,
-            p.product_name,
-            v.unit_price,
-            v.quantity,
-            v.item_lifecycle_status
-        FROM view_order_items_grouped AS v
-        INNER JOIN products AS p ON v.product_id = p.id
-        WHERE v.order_id = %s
-    """
-    if status_filter != "All":
-        base_query += " AND v.item_lifecycle_status = %s ORDER BY v.id ASC LIMIT %s OFFSET %s;"
-        return fetch_data(base_query, (order_id, status_filter, limit, offset))
-    base_query += " ORDER BY v.id ASC LIMIT %s OFFSET %s;"
-    return fetch_data(base_query, (order_id, limit, offset))
+    status_param = None if status_filter == "All" else status_filter
+    return fetch_data(
+        "SELECT * FROM get_order_items(%s, %s::enum_item_lifecycle_status, %s, %s);",
+        (order_id, status_param, limit, offset),
+    )
 
 @st.dialog("Add Items to Order")
 def add_items_dialog(order_id: int):

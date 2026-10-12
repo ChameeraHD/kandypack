@@ -20,27 +20,47 @@ def fetch_train_allocations(limit: int, offset: int) -> pd.DataFrame:
 @st.dialog("Allocate Item to Train")
 def create_allocation_dialog():
     trains = fetch_all("""
-        SELECT ts.id, s.store_name, ts.departure_timestamp
-        FROM train_schedules AS ts
-        JOIN stores AS s ON ts.destination_store_id = s.id
-        WHERE ts.departure_timestamp >= CURRENT_TIMESTAMP
-        ORDER BY ts.departure_timestamp ASC;
+        SELECT id, destination_store AS store_name, departure_timestamp
+        FROM view_train_schedules
+        ORDER BY departure_timestamp ASC;
     """)
-    unallocated_items = fetch_all("""
-        SELECT oi.id, p.product_name, oi.order_id
+    order_ids = fetch_all("""
+        SELECT DISTINCT oi.order_id
         FROM order_items AS oi
-        JOIN products AS p ON oi.product_id = p.id
         LEFT JOIN train_allocations AS ta ON oi.id = ta.order_item_id
-        WHERE ta.id IS NULL AND oi.item_lifecycle_status IN ('PLACED', 'SCHEDULED')
+        WHERE ta.id IS NULL AND oi.item_lifecycle_status = 'PLACED'
+        ORDER BY oi.order_id ASC
         LIMIT 100;
     """)
+
+    unallocated_items = []
+    for order in order_ids:
+        items = fetch_all(
+            "SELECT * FROM get_order_items(%s, 'PLACED'::enum_item_lifecycle_status, %s, %s);",
+            (order.order_id, 100, 0),
+        )
+        allocated_ids = {
+            allocation.order_item_id
+            for allocation in fetch_all(
+                "SELECT order_item_id FROM train_allocations WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = %s);",
+                (order.order_id,),
+            )
+        }
+        unallocated_items.extend(
+            (item, order.order_id)
+            for item in items
+            if item.id not in allocated_ids
+        )
+        if len(unallocated_items) >= 100:
+            unallocated_items = unallocated_items[:100]
+            break
 
     if not trains or not unallocated_items:
         st.error("No upcoming train schedules or unallocated order items found.")
         return
 
     train_options = {str(t.id): f"Train #{t.id} -> {t.store_name} ({t.departure_timestamp.strftime('%Y-%m-%d %H:%M')})" for t in trains}
-    item_options = {str(item.id): f"Item #{item.id} ({item.product_name}, Order #{item.order_id})" for item in unallocated_items}
+    item_options = {str(item.id): f"Item #{item.id} ({item.product_name}, Order #{order_id})" for item, order_id in unallocated_items}
 
     with st.form("create_train_alloc_form"):
         train_id = st.selectbox("Select Train Schedule", options=list(train_options.keys()), format_func=lambda x: train_options[x])

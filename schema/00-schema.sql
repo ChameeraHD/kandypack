@@ -189,11 +189,36 @@ CREATE TABLE train_schedules (
     destination_store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
     departure_timestamp  TIMESTAMPTZ NOT NULL,
     max_capacity         NUMERIC(10, 2) NOT NULL CHECK (max_capacity > 0),
+    remaining_capacity   NUMERIC(12, 4) NOT NULL CHECK (remaining_capacity >= 0 AND remaining_capacity <= max_capacity),
     created_by           UUID REFERENCES users(id) ON DELETE SET NULL,
     updated_by           UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE OR REPLACE FUNCTION initialize_train_remaining_capacity()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' AND NEW.remaining_capacity IS NULL THEN
+        NEW.remaining_capacity := NEW.max_capacity;
+    ELSIF TG_OP = 'UPDATE' AND NEW.max_capacity IS DISTINCT FROM OLD.max_capacity THEN
+        NEW.remaining_capacity := NEW.max_capacity - (OLD.max_capacity - OLD.remaining_capacity);
+    END IF;
+
+    IF NEW.remaining_capacity < 0 THEN
+        RAISE EXCEPTION 'max_capacity cannot be less than allocated capacity';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_initialize_train_remaining_capacity
+BEFORE INSERT OR UPDATE OF max_capacity ON train_schedules
+FOR EACH ROW
+EXECUTE FUNCTION initialize_train_remaining_capacity();
 
 CREATE TABLE train_allocations (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
